@@ -1,0 +1,1696 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sales Order Tracking System</title>
+  <style>
+    :root { --border:#e5e7eb; --bg:#f8fafc; --text:#0f172a; --muted:#64748b; }
+    body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"; color:var(--text); background:var(--bg); }
+    header { padding:14px 18px; background:#fff; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; flex-wrap:wrap;}
+    header h1 { font-size:16px; margin:0; font-weight:700; }
+    .pill { font-size:12px; color:var(--muted); }
+    .btn { border:1px solid var(--border); background:#fff; padding:8px 10px; border-radius:10px; cursor:pointer; }
+    .btn.primary { background:#0f172a; color:#fff; border-color:#0f172a; }
+    .btn.danger { border-color:#ef4444; color:#ef4444; background:#fff; }
+    .btn:disabled { opacity:.5; cursor:not-allowed; }
+    select, input, textarea { border:1px solid var(--border); border-radius:10px; padding:8px 10px; font-size:14px; background:#fff; }
+    textarea { min-height:72px; resize:vertical; }
+    main { display:grid; grid-template-columns: 1.25fr 1fr; gap:14px; padding:14px; }
+    .card { background:#fff; border:1px solid var(--border); border-radius:14px; padding:12px; box-shadow:0 1px 1px rgba(0,0,0,.02); }
+    .card h2 { margin:0 0 10px 0; font-size:14px; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border-bottom:1px solid var(--border); padding:8px 6px; font-size:13px; text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-weight:600; }
+    .row { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+    .row3 { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; }
+    .mt { margin-top:10px; }
+    .muted { color:var(--muted); font-size:12px; }
+    .error { color:#ef4444; font-size:12px; white-space:pre-wrap; }
+    .ok { color:#16a34a; font-size:12px; white-space:pre-wrap; }
+    .actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .divider { height:1px; background:var(--border); margin:12px 0; }
+    .section-title { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:12px; }
+    .section-title h3 { margin:0; font-size:13px; }
+    .mini { font-size:12px; }
+    .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:12px; background:#f1f5f9; border:1px solid var(--border); border-radius:8px; padding:2px 6px; }
+
+    /* Order photos */
+    .photo-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap:12px; }
+    .photo-item { border:1px solid var(--border); border-radius:16px; padding:10px; background:#fff; }
+    .photo-item img { width:100%; height:110px; object-fit:cover; border-radius:12px; border:1px solid var(--border); }
+    .photo-meta { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:8px; }
+    .photo-name { font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .btn.danger { border-color:#fecaca; color:#b91c1c; }
+  
+    /* ===== Order list filters ===== */
+    .filters {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin: 10px 0 12px;
+    }
+    .filters .input { flex: 1; min-width: 220px; }
+    .filters .select { min-width: 160px; }
+    .filters .muted { font-size: 12px; color: #6b7280; }
+
+</style>
+</head>
+<body>
+
+<div id="loginOverlay" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.35);z-index:50;">
+  <div class="card" style="width:360px;">
+    <h2>Sign In</h2>
+    <div class="row">
+      <div>
+        <div class="muted">Username</div>
+        <input id="loginUser" placeholder="Username" autocomplete="username" />
+      </div>
+      <div>
+        <div class="muted">Password</div>
+        <input id="loginPass" type="password" placeholder="Password" autocomplete="current-password" />
+      </div>
+    </div>
+    <div class="actions mt">
+      <button class="btn primary" id="btnLogin">Sign In</button>
+    </div>
+    <div class="error mt" id="loginErr"></div>
+    <div class="muted mt">Admins can create accounts and set passwords in "User Management".</div>
+  </div>
+</div>
+
+
+<div id="importOverlay" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.35);z-index:49;">
+  <div class="card" style="width:min(900px,94vw);max-height:88vh;overflow:auto;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+      <h2 style="margin:0;">Import Orders</h2>
+      <button class="btn" id="btnImportClose">Close</button>
+    </div>
+
+    <div class="muted mt">
+      Two options: upload an <b>Excel (.xlsx/.xls)</b> / <b>CSV (.csv)</b> file, or paste table text directly (copy from Excel and paste).
+      <br/>Requirement: must include the <b>orderNo</b> (order number) column. Each row is an order line item; rows with the same orderNo will be merged into one order.
+      <br/>Duplicate handling: if any orderNo already exists in the database, the import will be <b>aborted</b> and the duplicate orderNo(s) will be shown (no partial import).
+    </div>
+
+    <div class="mt" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div class="card" style="padding:14px;">
+        <h3 style="margin:0 0 8px 0;">Option 1: Upload a file</h3>
+        <input id="importFile" type="file" accept=".xlsx,.xls,.csv" />
+        <div class="actions mt">
+          <button class="btn primary" id="btnImportFile">Start File Import</button>
+        </div>
+        <div class="muted mt" style="font-size:12px;">
+          Recommended headers (English/Chinese both supported):
+          <pre style="white-space:pre-wrap;">orderNo, customerName, customerContact, currency, paymentTerms, totalAmount, productRequirements, packagingRequirements, productName, spec, quantity, unitPrice, remark</pre>
+        </div>
+      </div>
+
+      <div class="card" style="padding:14px;">
+        <h3 style="margin:0 0 8px 0;">Option 2: Paste table text</h3>
+        <textarea id="importText" rows="10" placeholder="Paste table text including headers (copy from Excel; TAB-separated by default; CSV text with commas is also supported)"></textarea>
+        <div class="actions mt">
+          <button class="btn primary" id="btnImportText">Start Import from Pasted Text</button>
+        </div>
+        <div class="muted mt" style="font-size:12px;">
+          Tip: the first row must be the header. When you paste multiple rows, the same orderNo will be merged into one order.
+        </div>
+      </div>
+    </div>
+
+    <div class="error mt" id="importErr"></div>
+  </div>
+</div>
+
+<header>
+  <h1>Sales Order Tracking System</h1>
+  <span class="pill" id="userPill">Not signed in</span>
+
+  <label class="pill">Current role:
+    <select id="roleSelect" disabled>
+      <option>GM</option>
+      <option>SALES</option>
+      <option>PMC</option>
+      <option>PRODUCTION</option>
+      <option>WAREHOUSE</option>
+      <option>GUEST</option>
+    </select>
+  </label>
+
+  <button class="btn" id="btnUserMgmt" style="display:none;">User Management</button>
+  <button class="btn" id="btnAuditLogs" style="display:none;">Audit Logs</button>
+  <button class="btn" id="btnLogout" style="display:none;">Logout</button>
+
+  <button class="btn" id="btnRefresh">Refresh</button>
+  <button class="btn primary" id="btnNew">New Order</button>
+
+  <span class="muted" id="globalMsg"></span>
+</header>
+
+<main>
+  <div class="card">
+    <h2>Orders</h2>
+    <div class="muted">Note: For non-GM/SALES roles, sensitive fields such as customer, amounts, and unit prices are hidden.</div>
+
+    <div class="filters">
+      <input id="orderSearch" class="input" type="text" placeholder="Search: Order No. / Status / Customer (if visible)" />
+      <select id="statusFilter" class="select">
+        <option value="">All Statuses</option>
+      </select>
+      <button id="btnExportCsv" class="btn">Export CSV</button>
+      <button id="btnImportOrders" class="btn">Import Orders</button>
+      <span id="filterStats" class="muted"></span>
+    </div>
+
+    <div class="mt"></div>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Order No.</th>
+          <th>Status</th>
+          <th>Customer</th>
+          <th>Total Amount</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="orderTbody"></tbody>
+    </table>
+    <div class="error mt" id="listErr"></div>
+  </div>
+
+  <div class="card" id="rightCard">
+    <!-- dynamic -->
+  </div>
+</main>
+
+<script>
+const apiBase = '/api/orders';
+
+const roleSelect = document.getElementById('roleSelect');
+const btnRefresh = document.getElementById('btnRefresh');
+const btnNew = document.getElementById('btnNew');
+const orderTbody = document.getElementById('orderTbody');
+const rightCard = document.getElementById('rightCard');
+const globalMsg = document.getElementById('globalMsg');
+const listErr = document.getElementById('listErr');
+const loginOverlay = document.getElementById('loginOverlay');
+const loginUser = document.getElementById('loginUser');
+const loginPass = document.getElementById('loginPass');
+const btnLogin = document.getElementById('btnLogin');
+const loginErr = document.getElementById('loginErr');
+const userPill = document.getElementById('userPill');
+const btnLogout = document.getElementById('btnLogout');
+const btnUserMgmt = document.getElementById('btnUserMgmt');
+const btnAuditLogs = document.getElementById('btnAuditLogs');
+const btnImportOrders = document.getElementById('btnImportOrders');
+
+const importOverlay = document.getElementById('importOverlay');
+const btnImportClose = document.getElementById('btnImportClose');
+const btnImportCancel = document.getElementById('btnImportCancel');
+const importFile = document.getElementById('importFile');
+const btnImportFile = document.getElementById('btnImportFile');
+const importText = document.getElementById('importText');
+const btnImportText = document.getElementById('btnImportText');
+const importErr = document.getElementById('importErr');
+
+let authUser = null;
+let authRole = null;
+
+function showLogin(show) {
+  loginErr.textContent = '';
+  loginOverlay.style.display = show ? 'flex' : 'none';
+}
+
+function showImport(show) {
+  importErr.textContent = '';
+  importOverlay.style.display = show ? 'flex' : 'none';
+  if (show) {
+    importFile.value = '';
+    importText.value = '';
+  }
+}
+
+function setUserPill() {
+  if (!authUser) {
+    userPill.textContent = 'Not signed in';
+    btnLogout.style.display = 'none';
+    btnUserMgmt.style.display = 'none';
+    btnAuditLogs.style.display = 'none';
+    btnImportOrders.style.display = 'none';
+    return;
+  }
+  userPill.textContent = `Signed in: ${authUser} (${authRole})`;
+  btnLogout.style.display = '';
+  btnUserMgmt.style.display = (authRole === 'GM') ? '' : 'none';
+  btnAuditLogs.style.display = (authRole === 'GM') ? '' : 'none';
+  btnImportOrders.style.display = (authRole === 'GM' || authRole === 'SALES') ? '' : 'none';
+}
+
+async function refreshMe() {
+  const res = await fetch('/api/auth/me', { credentials: 'include' });
+  if (!res.ok) {
+    authUser = null;
+    authRole = null;
+    roleSelect.value = 'GUEST';
+    setUserPill();
+    return null;
+  }
+  const me = await res.json();
+  authUser = me.username;
+  authRole = me.role;
+  roleSelect.value = authRole || 'GUEST';
+  setUserPill();
+  return me;
+}
+
+async function doLogin() {
+  const username = loginUser.value.trim();
+  const password = loginPass.value;
+  if (!username || !password) {
+    loginErr.textContent = 'Please enter username and password.';
+    return;
+  }
+  const res = await fetch('/api/auth/login', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    loginErr.textContent = t || 'Sign-in failed';
+    return;
+  }
+  await refreshMe();
+  showLogin(false);
+  await loadList();
+}
+
+async function doLogout() {
+  await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+  authUser = null;
+  authRole = null;
+  roleSelect.value = 'GUEST';
+  setUserPill();
+  showLogin(true);
+}
+
+
+
+// --- Bulk import orders (GM / SALES) ---
+if (btnImportOrders) {
+  btnImportOrders.onclick = () => {
+    if (!authUser) {
+      showLogin(true);
+      return;
+    }
+    showImport(true);
+  };
+}
+if (btnImportClose) btnImportClose.onclick = () => showImport(false);
+if (btnImportCancel) btnImportCancel.onclick = () => showImport(false);
+
+async function importOrdersFromFile() {
+  importErr.textContent = '';
+  if (!importFile.files || importFile.files.length === 0) {
+    importErr.textContent = 'Please select a CSV or Excel file.';
+    return;
+  }
+  const fd = new FormData();
+  fd.append('file', importFile.files[0]);
+  const res = await fetch('/api/orders/import/file', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'X-ROLE': roleSelect.value },
+    body: fd
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    importErr.textContent = t || 'Import failed';
+    return;
+  }
+  const r = await res.json();
+  showImport(false);
+  await loadList();
+  alert(`Import succeeded: ${r.ordersImported} order(s), ${r.itemsImported} item(s)`);
+}
+
+async function importOrdersFromText() {
+  importErr.textContent = '';
+  const text = (importText.value || '').trim();
+  if (!text) {
+    importErr.textContent = 'Please paste the table text.';
+    return;
+  }
+  const res = await fetch('/api/orders/import/text', {
+    method: 'POST',
+    credentials: 'include',
+    headers: headers(),
+    body: JSON.stringify({ text })
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    importErr.textContent = t || 'Import failed';
+    return;
+  }
+  const r = await res.json();
+  showImport(false);
+  await loadList();
+  alert(`Import succeeded: ${r.ordersImported} order(s), ${r.itemsImported} item(s)`);
+}
+
+if (btnImportFile) btnImportFile.onclick = importOrdersFromFile;
+if (btnImportText) btnImportText.onclick = importOrdersFromText;
+
+
+
+// --- Admin: user management (GM only) ---
+function userRow(u){
+  const enabled = u.enabled ? 'Yes' : 'No';
+  const btnToggle = u.enabled ? 'Disable' : 'Enable';
+  return `<tr>
+    <td>${u.id}</td>
+    <td>${u.username}</td>
+    <td>${u.role}</td>
+    <td>${enabled}</td>
+    <td style="display:flex; gap:6px; flex-wrap:wrap;">
+      <button class="btn mini" data-um-act="reset" data-id="${u.id}">Reset Password</button>
+      <button class="btn mini" data-um-act="toggle" data-id="${u.id}" data-enabled="${u.enabled ? '1' : '0'}">${btnToggle}</button>
+      <button class="btn danger mini" data-um-act="del" data-id="${u.id}" data-name="${escapeHtml(u.username)}">Delete</button>
+    </td>
+  </tr>`;
+}
+
+async function refreshUserMgmt(){
+  const tbody = document.getElementById('umTable');
+  const err = document.getElementById('umErr');
+  if (!tbody) return;
+  err.textContent = '';
+  const users = await apiAdmin('/admin/users');
+  tbody.innerHTML = users.map(userRow).join('');
+
+  tbody.querySelectorAll('button[data-um-act]').forEach(btn => btn.addEventListener('click', async (ev) => {
+    const act = ev.target.getAttribute('data-um-act');
+    const id = ev.target.getAttribute('data-id');
+    if (!id) return;
+    if (act === 'reset') {
+      await resetUserPassword(id);
+      return;
+    }
+    if (act === 'toggle') {
+      const enabled = ev.target.getAttribute('data-enabled') === '1';
+      await setUserEnabled(id, !enabled);
+      await refreshUserMgmt();
+      return;
+    }
+    if (act === 'del') {
+      const name = ev.target.getAttribute('data-name') || '';
+      await deleteUser(id, name);
+      await refreshUserMgmt();
+      return;
+    }
+  }));
+}
+
+async function setUserEnabled(id, enabled){
+  await apiAdmin(`/admin/users/${id}/enabled`, {
+    method: 'PUT',
+    headers: headers(),
+    body: JSON.stringify({ enabled })
+  });
+}
+
+async function deleteUser(id, name){
+  if (!confirm(`Confirm delete user ${name || id}? This cannot be undone.`)) return;
+  await apiAdmin(`/admin/users/${id}`, {
+    method: 'DELETE',
+    headers: headers()
+  });
+  alert('Deleted');
+}
+
+async function createUser(){
+  const err = document.getElementById('umErr');
+  err.textContent = '';
+  const username = document.getElementById('umName').value.trim();
+  const password = document.getElementById('umPass').value;
+  const role = document.getElementById('umRole').value;
+  if (!username || !password) {
+    err.textContent = 'Please enter username and password';
+    return;
+  }
+  await apiAdmin('/admin/users', {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ username, password, role })
+  });
+  document.getElementById('umPass').value = '';
+  await refreshUserMgmt();
+}
+
+async function resetUserPassword(id){
+  const newPass = prompt('Enter a new password (takes effect immediately):');
+  if (!newPass) return;
+  await apiAdmin(`/admin/users/${id}/password`, {
+    method: 'PUT',
+    headers: headers(),
+    body: JSON.stringify({ password: newPass })
+  });
+  alert('Password updated');
+}
+
+async function openUserMgmt(){
+  if (authRole !== 'GM') {
+    alert('Only the GM role can manage users');
+    return;
+  }
+  setRight( `
+    <div class="card">
+      <h2>User Management (Admin)</h2>
+      <div class="muted">Create accounts for employees to sign in. Roles determine permissions.</div>
+      <div class="mt"></div>
+      <div class="row">
+        <div>
+          <div class="muted">Username</div>
+          <input id="umName" placeholder="e.g.: warehouse1" />
+        </div>
+        <div>
+          <div class="muted">Password</div>
+          <input id="umPass" type="password" placeholder="Set initial password" />
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <div class="muted">Role</div>
+          <select id="umRole">
+            <option value="GM">GM (Admin)</option>
+            <option value="SALES">SALES (Sales)</option>
+            <option value="WAREHOUSE">WAREHOUSE (Warehouse)</option>
+          </select>
+        </div>
+        <div class="actions" style="align-self:end">
+          <button class="btn primary" id="umCreateBtn">Create User</button>
+        </div>
+      </div>
+      <div class="error mt" id="umErr"></div>
+      <div class="mt"></div>
+      <table class="table">
+        <thead><tr><th>ID</th><th>Username</th><th>Role</th><th>Enabled</th><th>Actions</th></tr></thead>
+        <tbody id="umTable"></tbody>
+      </table>
+    </div>
+  `);
+  document.getElementById('umCreateBtn').onclick = createUser;
+  await refreshUserMgmt();
+}
+
+// ----- Audit logs (GM only) -----
+let auditState = {
+  page: 0,
+  size: 20,
+  q: '',
+  action: '',
+  username: '',
+  status: '',
+  from: '',
+  to: ''
+};
+
+function auditActions() {
+  return [
+    '',
+    'LOGIN','LOGOUT',
+    'CREATE_ORDER','UPDATE_ORDER','DELETE_ORDER',
+    'IMPORT_ORDERS',
+    'UPLOAD_PHOTO','DELETE_PHOTO',
+    'ADMIN_CREATE_USER','ADMIN_RESET_PASSWORD','ADMIN_SET_ENABLED','ADMIN_DELETE_USER',
+    'WAREHOUSE_RECEIPT_LOG','WAREHOUSE_RECEIPT_CONFIRM','SHIP_CONFIRM'
+  ];
+}
+
+function buildAuditQuery(){
+  const p = new URLSearchParams();
+  p.set('page', String(auditState.page||0));
+  p.set('size', String(auditState.size||20));
+  if (auditState.q) p.set('q', auditState.q);
+  if (auditState.action) p.set('action', auditState.action);
+  if (auditState.username) p.set('username', auditState.username);
+  if (auditState.status) p.set('status', auditState.status);
+  if (auditState.from) p.set('from', auditState.from);
+  if (auditState.to) p.set('to', auditState.to);
+  return p.toString();
+}
+
+function fmtTime(iso){
+  if (!iso) return '—';
+  // ISO like 2026-01-10T15:00:00
+  return String(iso).replace('T',' ').slice(0,19);
+}
+
+function auditRow(a){
+  return `
+    <tr>
+      <td>${escapeHtml(fmtTime(a.createdAt))}</td>
+      <td>${escapeHtml(a.username || '—')}</td>
+      <td>${escapeHtml(a.role || '—')}</td>
+      <td>${escapeHtml(a.action || '—')}</td>
+      <td>${escapeHtml(a.target || '—')}</td>
+      <td>${escapeHtml(a.status || '—')}</td>
+      <td>${escapeHtml(a.ip || '—')}</td>
+      <td title="${escapeHtml(a.details || '')}" style="max-width:360px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(a.details || '—')}</td>
+    </tr>
+  `;
+}
+
+async function refreshAuditLogs(pageOverride=null){
+  const err = document.getElementById('alErr');
+  const tbody = document.getElementById('alTable');
+  const pager = document.getElementById('alPager');
+  if (!tbody) return;
+  if (pageOverride !== null) auditState.page = pageOverride;
+  err.textContent = '';
+  tbody.innerHTML = `<tr><td colspan="8" class="muted">Loading...</td></tr>`;
+  try {
+    const data = await apiAdmin('/audit-logs?' + buildAuditQuery());
+    const list = Array.isArray(data.content) ? data.content : [];
+    tbody.innerHTML = list.length ? list.map(auditRow).join('') : `<tr><td colspan="8" class="muted">No records</td></tr>`;
+    pager.textContent = `Page ${Number(data.page)+1} / ${data.totalPages} (Total ${data.totalElements})`;
+
+    document.getElementById('alPrev').disabled = (data.page <= 0);
+    document.getElementById('alNext').disabled = (data.page >= data.totalPages - 1);
+  } catch(e) {
+    err.textContent = e.message || 'Failed to load';
+    tbody.innerHTML = '';
+  }
+}
+
+function readAuditFilters(){
+  auditState.q = document.getElementById('alQ').value.trim();
+  auditState.action = document.getElementById('alAction').value;
+  auditState.username = document.getElementById('alUser').value.trim();
+  auditState.status = document.getElementById('alStatus').value;
+  auditState.size = parseInt(document.getElementById('alSize').value || '20', 10);
+  // datetime-local returns 'YYYY-MM-DDTHH:MM'
+  const from = document.getElementById('alFrom').value;
+  const to = document.getElementById('alTo').value;
+  auditState.from = from ? (from + ':00') : '';
+  auditState.to = to ? (to + ':00') : '';
+}
+
+async function openAuditLogs(){
+  if (authRole !== 'GM') {
+    alert('Only the GM role can view audit logs');
+    return;
+  }
+
+  const actions = auditActions().map(a => {
+    if (!a) return `<option value="">All Actions</option>`;
+    return `<option value="${a}">${a}</option>`;
+  }).join('');
+
+  setRight(`
+    <div class="card">
+      <h2>Audit Logs (Admin)</h2>
+      <div class="muted">Search, filter, and paginate. Shows the most recent records (newest first).</div>
+
+      <div class="filters mt" style="gap:8px; flex-wrap:wrap;">
+        <input id="alQ" class="input" type="text" placeholder="Search: user / action / target / IP / details" style="min-width:220px;" />
+        <select id="alAction" class="select">${actions}</select>
+        <input id="alUser" class="input" type="text" placeholder="Username (exact)" style="width:160px;" />
+        <select id="alStatus" class="select">
+          <option value="">All Statuses</option>
+          <option value="SUCCESS">SUCCESS</option>
+          <option value="FAIL">FAIL</option>
+        </select>
+        <input id="alFrom" class="input" type="datetime-local" title="From" />
+        <input id="alTo" class="input" type="datetime-local" title="To" />
+        <select id="alSize" class="select" title="Page size">
+          <option value="10">10/page</option>
+          <option value="20" selected>20/page</option>
+          <option value="50">50/page</option>
+          <option value="100">100/page</option>
+        </select>
+        <button class="btn" id="alApply">Apply</button>
+        <button class="btn" id="alClear">Clear</button>
+      </div>
+
+      <div class="mt"></div>
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="min-width:140px;">Time</th>
+            <th>User</th>
+            <th>Role</th>
+            <th>Action</th>
+            <th>Target</th>
+            <th>Status</th>
+            <th>IP</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody id="alTable"></tbody>
+      </table>
+
+      <div class="row mt" style="justify-content:space-between; align-items:center;">
+        <div class="muted" id="alPager"></div>
+        <div class="actions">
+          <button class="btn" id="alPrev">Prev</button>
+          <button class="btn" id="alNext">Next</button>
+        </div>
+      </div>
+
+      <div class="error mt" id="alErr"></div>
+    </div>
+  `);
+
+  document.getElementById('alApply').onclick = async () => {
+    readAuditFilters();
+    await refreshAuditLogs(0);
+  };
+  document.getElementById('alClear').onclick = async () => {
+    document.getElementById('alQ').value = '';
+    document.getElementById('alAction').value = '';
+    document.getElementById('alUser').value = '';
+    document.getElementById('alStatus').value = '';
+    document.getElementById('alFrom').value = '';
+    document.getElementById('alTo').value = '';
+    document.getElementById('alSize').value = '20';
+    auditState = { page:0, size:20, q:'', action:'', username:'', status:'', from:'', to:'' };
+    await refreshAuditLogs(0);
+  };
+  document.getElementById('alPrev').onclick = async () => {
+    await refreshAuditLogs(Math.max(0, (auditState.page||0) - 1));
+  };
+  document.getElementById('alNext').onclick = async () => {
+    await refreshAuditLogs((auditState.page||0) + 1);
+  };
+  document.getElementById('alQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('alApply').click(); });
+
+  // First load
+  await refreshAuditLogs(0);
+}
+
+let currentOrder = null;
+let allOrders = [];
+
+function headers() {
+  return {
+    'Content-Type': 'application/json',
+    'X-ROLE': roleSelect.value
+  };
+}
+
+function fmt(v) {
+  if (v === null || v === undefined || v === '') return '—';
+  return v;
+}
+function fmtMoney(v) {
+  if (v === null || v === undefined) return '***';
+  return v;
+}
+function escapeHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
+    .replaceAll('"','&quot;').replaceAll("'",'&#039;');
+}
+function toDateInputValue(d) {
+  return d ? String(d).slice(0,10) : '';
+}
+async function api(path, opts={}) {
+  // Always send cookies (session)
+  if (!opts.credentials) opts.credentials = 'include';
+
+  // Default headers: keep X-ROLE for backward compatibility (server will override by login role)
+  const h = Object.assign({}, opts.headers || {});
+  if (!h['X-ROLE']) h['X-ROLE'] = roleSelect.value || 'GUEST';
+  opts.headers = h;
+
+  const res = await fetch(apiBase + path, opts);
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+
+  if (res.status === 401 || res.status === 403) {
+    // Use showLogin() to control the sign-in modal
+    showLogin(true, 'Please sign in first');
+    throw new Error('Not signed in');
+  }
+
+  if (!res.ok) {
+    const msg = (data && data.message) ? data.message : (typeof data === 'string' ? data : 'Request failed');
+    throw new Error(msg);
+  }
+  return data;
+}
+
+
+async function apiAdmin(path, opts={}) {
+  // Admin endpoints are under /api (not /api/orders)
+  if (!opts.credentials) opts.credentials = 'include';
+
+  const h = Object.assign({}, opts.headers || {});
+  if (!h['X-ROLE']) h['X-ROLE'] = roleSelect.value || 'GUEST';
+  opts.headers = h;
+
+  const res = await fetch('/api' + path, opts);
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+
+  if (res.status === 401 || res.status === 403) {
+    showLogin(true, 'Please sign in first');
+    throw new Error('Not signed in');
+  }
+
+  if (!res.ok) {
+    const msg = (data && data.message) ? data.message : (typeof data === 'string' ? data : 'Request failed');
+    throw new Error(msg);
+  }
+  return data;
+}
+
+// ----- Photos (per order) -----
+function renderPhotos(list) {
+  const grid = document.getElementById('photoGrid');
+  if (!grid) return;
+  if (!Array.isArray(list) || list.length === 0) {
+    grid.innerHTML = `<div class="muted mini">No photos</div>`;
+    return;
+  }
+  grid.innerHTML = list.map(p => {
+    const name = escapeHtml(p.originalFilename || 'photo');
+    const url = p.url || '';
+    return `
+      <div class="photo-item">
+        <img class="photo-thumb" src="${url}" alt="${name}" />
+        <div class="row" style="align-items:flex-start; justify-content:space-between; gap:8px;">
+          <div class="photo-meta" title="${name}">${name}</div>
+          <button class="btn danger mini" data-photo-del="${p.id}">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function loadPhotos(orderId) {
+  const grid = document.getElementById('photoGrid');
+  if (!grid) return;
+  try {
+    grid.innerHTML = `<div class="muted mini">Loading...</div>`;
+    const list = await api(`/${orderId}/photos`, { headers: headers() });
+    renderPhotos(list);
+  } catch (e) {
+    grid.innerHTML = `<div class="error">Failed to load photos: ${escapeHtml(e.message || String(e))}</div>`;
+  }
+}
+
+function wirePhotos(orderId) {
+  const input = document.getElementById('photoFiles');
+  const btnUpload = document.getElementById('btnUploadPhotos');
+  const msg = document.getElementById('photoMsg');
+  const grid = document.getElementById('photoGrid');
+  if (!input || !btnUpload || !grid) return;
+
+  btnUpload.onclick = async () => {
+    msg.textContent = '';
+    const files = Array.from(input.files || []);
+    if (files.length === 0) {
+      toast('Please select images');
+      return;
+    }
+
+    try {
+      btnUpload.disabled = true;
+      msg.textContent = 'Uploading...';
+
+      // Upload one by one (simple + reliable)
+      for (const f of files) {
+        const fd = new FormData();
+        fd.append('file', f);
+        const r = await fetch(`/api/orders/${orderId}/photos`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'X-ROLE': roleSelect.value },
+          body: fd
+        });
+        if (!r.ok) throw new Error(await r.text());
+      }
+
+      input.value = '';
+      msg.textContent = 'Upload succeeded';
+      await loadPhotos(orderId);
+    } catch (e) {
+      msg.textContent = '';
+      toast('Upload failed: ' + (e.message || e));
+    } finally {
+      btnUpload.disabled = false;
+    }
+  };
+
+  grid.onclick = async (ev) => {
+    const btn = ev.target.closest('[data-photo-del]');
+    if (!btn) return;
+    const photoId = btn.getAttribute('data-photo-del');
+    if (!photoId) return;
+    if (!confirm('Delete this photo?')) return;
+    try {
+      await fetch(`/api/photos/${photoId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'X-ROLE': roleSelect.value }
+      });
+      await loadPhotos(orderId);
+    } catch (e) {
+      toast('Delete failed: ' + (e.message || e));
+    }
+  };
+}
+
+function setRight(html) {
+  rightCard.innerHTML = html;
+}
+
+function can(role, what) {
+  // Very simple UI control (backend is source of truth).
+  const r = roleSelect.value;
+  if (r === 'GM') return true;
+  if (what === 'editOrder') return r === 'SALES';
+  if (what === 'plan') return r === 'PMC';
+  if (what === 'process') return r === 'PRODUCTION' || r === 'PMC';
+  if (what === 'warehouse') return r === 'WAREHOUSE';
+  if (what === 'shipPlan') return r === 'SALES';
+  return false;
+}
+
+
+
+async function loadList() {
+  listErr.textContent = '';
+  orderTbody.innerHTML = '<tr><td colspan="6" class="muted">Loading...</td></tr>';
+  try {
+    const list = await api('', { method: 'GET', headers: headers() });
+    allOrders = Array.isArray(list) ? list : [];
+    updateStatusFilterOptions(allOrders);
+    renderOrderList(getFilteredOrders());
+  } catch (e) {
+    listErr.textContent = e.message;
+    orderTbody.innerHTML = '';
+  }
+}
+
+function getSelectedRole() {
+  // roleSelect is the "Current role" dropdown (for demo/permission simulation)
+  return (roleSelect && roleSelect.value) ? roleSelect.value : (currentUser && currentUser.role) ? currentUser.role : 'GM';
+}
+
+function canSeeSensitive() {
+  const r = getSelectedRole();
+  return r === 'GM' || r === 'SALES';
+}
+
+function updateStatusFilterOptions(list) {
+  const sel = document.getElementById('statusFilter');
+  if (!sel) return;
+  const cur = sel.value || '';
+  const statuses = Array.from(new Set((list || []).map(o => o && o.status).filter(Boolean))).sort();
+  sel.innerHTML = '<option value="">All Statuses</option>' +
+    statuses.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+  if (cur === '' || statuses.includes(cur)) sel.value = cur;
+}
+
+function getFilteredOrders() {
+  const q = (document.getElementById('orderSearch')?.value || '').trim().toLowerCase();
+  const status = (document.getElementById('statusFilter')?.value || '').trim();
+  let list = Array.isArray(allOrders) ? allOrders.slice() : [];
+  if (status) list = list.filter(o => (o.status || '') === status);
+  if (q) {
+    list = list.filter(o => {
+      const hay = [
+        o.id,
+        o.orderNo,
+        o.status,
+        o.customerName
+      ].filter(v => v !== undefined && v !== null && String(v).trim() !== '').join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }
+  return list;
+}
+
+function renderOrderList(list) {
+  const showSensitive = canSeeSensitive();
+  orderTbody.innerHTML = '';
+  for (const o of (list || [])) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${escapeHtml(o.id)}</td>
+      <td>${escapeHtml(o.orderNo)}</td>
+      <td>${escapeHtml(o.status)}</td>
+      <td>${showSensitive ? escapeHtml(o.customerName) : '***'}</td>
+      <td>${showSensitive ? escapeHtml(o.totalAmount) : '***'}</td>
+      <td>
+        <button class="btn sm" data-act="view" data-id="${escapeHtml(o.id)}">View</button>
+        ${can(null,'editOrder') ? `<button class="btn sm" data-act="edit" data-id="${escapeHtml(o.id)}">Edit</button>` : ''}
+        ${can(null,'deleteOrder') ? `<button class="btn sm danger" data-act="del" data-id="${escapeHtml(o.id)}">Delete</button>` : ''}
+      </td>
+    `;
+    orderTbody.appendChild(tr);
+  }
+
+  // bind row buttons
+  orderTbody.querySelectorAll('button[data-act]').forEach(btn => btn.addEventListener('click', async (ev) => {
+    const act = ev.target.getAttribute('data-act');
+    const id = ev.target.getAttribute('data-id');
+    if (act === 'view') {
+      await openDetail(id);
+    } else if (act === 'del') {
+      if (!confirm('Confirm delete?')) return;
+      await api(`/${id}`, { method: 'DELETE', headers: headers() });
+      await loadList();
+      detailPane.classList.add('hidden');
+      editPane.classList.add('hidden');
+    } else if (act === 'edit') {
+      await openEdit(id);
+    }
+  }));
+
+  const stats = document.getElementById('filterStats');
+  if (stats) stats.textContent = `Filtered ${(list || []).length} / ${(allOrders || []).length}`;
+}
+
+function csvCell(v) {
+  const s = String(v ?? '');
+  if (/[",\r\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function downloadText(text, filename, mime) {
+  const blob = new Blob([text], { type: mime || 'text/plain;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportOrdersCsv() {
+  const showSensitive = canSeeSensitive();
+  const list = getFilteredOrders();
+  const headers = ['ID', 'Order No.', 'Status', 'Customer', 'Currency', 'Total Amount', 'Created At'];
+  const rows = list.map(o => ([
+    o.id ?? '',
+    o.orderNo ?? '',
+    o.status ?? '',
+    showSensitive ? (o.customerName ?? '') : '***',
+    o.currency ?? '',
+    showSensitive ? (o.totalAmount ?? '') : '***',
+    o.createdAt ?? ''
+  ]));
+  const csv = [headers, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
+  const date = new Date().toISOString().slice(0, 10);
+  downloadText(csv, `orders_${date}.csv`, 'text/csv;charset=utf-8;');
+}
+async function openDetail(id) {
+  try {
+    currentOrder = await api('/' + id, { headers: headers() });
+
+    // Multi-receipt stats & logs (best-effort)
+    const [statsRes, logsRes] = await Promise.allSettled([
+      api('/' + id + '/warehouse-receipt-stats', { headers: headers() }),
+      api('/' + id + '/warehouse-receipts', { headers: headers() })
+    ]);
+    currentOrder.warehouseReceiptStats = (statsRes.status === 'fulfilled' && Array.isArray(statsRes.value)) ? statsRes.value : [];
+    currentOrder.warehouseReceiptLogs = (logsRes.status === 'fulfilled' && Array.isArray(logsRes.value)) ? logsRes.value : [];
+
+    renderDetail(currentOrder);
+  } catch (e) {
+    setRight(`<h2>Details</h2><div class="error">${escapeHtml(e.message)}</div>`);
+  }
+}
+
+async function openEdit(id) {
+  try {
+    currentOrder = await api('/' + id, { headers: headers() });
+    renderOrderForm('edit', currentOrder);
+  } catch (e) {
+    setRight(`<h2>Edit</h2><div class="error">${escapeHtml(e.message)}</div>`);
+  }
+}
+
+async function doDelete(id) {
+  if (!confirm('Delete order #' + id + ' ?')) return;
+  try {
+    await api('/' + id, { method:'DELETE', headers: headers() });
+    globalMsg.textContent = 'Deleted order #' + id;
+    currentOrder = null;
+    await loadList();
+    setRight(`<h2>Deleted</h2><div class="muted">Order #${id} has been deleted.</div>`);
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+function blankOrder() {
+  return {
+    orderNo: '',
+    currency: 'USD',
+    customerName: '',
+    contact: '',
+    paymentTerms: '',
+    totalAmount: 0,
+    productReq: '',
+    packagingReq: '',
+    items: [
+      { productName:'', spec:'', quantity:1, unitPrice:0, notes:'' }
+    ]
+  };
+}
+
+function renderOrderForm(mode, order) {
+  const isEdit = mode === 'edit';
+  const title = isEdit ? `Edit Order #${order.id}` : 'New Order';
+  const errId = 'formErr';
+  const okId = 'formOk';
+
+  setRight(`
+    <h2>${title}</h2>
+    <div class="muted">Only GM/SALES can create/edit orders. Unauthorized roles will receive HTTP 403.</div>
+    <div class="divider"></div>
+
+    <div class="row3">
+      <div>
+        <div class="muted">Order No.</div>
+        <input id="f_orderNo" value="${escapeHtml(order.orderNo||'')}" />
+      </div>
+      <div>
+        <div class="muted">Currency</div>
+        <input id="f_currency" value="${escapeHtml(order.currency||'')}" />
+      </div>
+      <div>
+        <div class="muted">Total Amount</div>
+        <input id="f_totalAmount" type="number" step="0.01" value="${order.totalAmount ?? ''}" />
+      </div>
+    </div>
+
+    <div class="row mt">
+      <div>
+        <div class="muted">Customer Name</div>
+        <input id="f_customerName" value="${escapeHtml(order.customerName||'')}" />
+      </div>
+      <div>
+        <div class="muted">Contact Info</div>
+        <input id="f_contact" value="${escapeHtml(order.contact||'')}" />
+      </div>
+    </div>
+
+    <div class="row mt">
+      <div>
+        <div class="muted">Payment Terms</div>
+        <input id="f_paymentTerms" value="${escapeHtml(order.paymentTerms||'')}" />
+      </div>
+      <div></div>
+    </div>
+
+    <div class="row mt">
+      <div>
+        <div class="muted">Product Requirements</div>
+        <textarea id="f_productReq">${escapeHtml(order.productReq||'')}</textarea>
+      </div>
+      <div>
+        <div class="muted">Packaging Requirements</div>
+        <textarea id="f_packagingReq">${escapeHtml(order.packagingReq||'')}</textarea>
+      </div>
+    </div>
+
+    <div class="section-title">
+      <h3>Order Items</h3>
+      <div class="actions">
+        <button class="btn mini" id="btnAddItem">Add Row</button>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Product Name</th><th>Spec</th><th>Quantity</th><th>Unit Price</th><th>Notes</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="itemTbody"></tbody>
+    </table>
+
+    <div class="actions mt">
+      <button class="btn" id="btnCancel">Cancel</button>
+      <button class="btn primary" id="btnSubmit">${isEdit ? 'Save Changes' : 'Create Order'}</button>
+    </div>
+
+    <div class="error mt" id="${errId}"></div>
+    <div class="ok mt" id="${okId}"></div>
+  `);
+
+  const itemTbody = document.getElementById('itemTbody');
+  function addItemRow(it) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input class="i_productName" value="${escapeHtml(it.productName||'')}" /></td>
+      <td><input class="i_spec" value="${escapeHtml(it.spec||'')}" /></td>
+      <td><input class="i_quantity" type="number" min="0" value="${it.quantity ?? 0}" /></td>
+      <td><input class="i_unitPrice" type="number" step="0.01" value="${it.unitPrice ?? 0}" /></td>
+      <td><input class="i_notes" value="${escapeHtml(it.notes||'')}" /></td>
+      <td><button class="btn mini danger">Delete</button></td>
+    `;
+    tr.querySelector('button').addEventListener('click', () => tr.remove());
+    itemTbody.appendChild(tr);
+  }
+
+  (order.items || []).forEach(addItemRow);
+
+  document.getElementById('btnAddItem').addEventListener('click', () => addItemRow({productName:'',spec:'',quantity:1,unitPrice:0,notes:''}));
+  document.getElementById('btnCancel').addEventListener('click', () => {
+    if (currentOrder && currentOrder.id) renderDetail(currentOrder);
+    else setRight('<h2>Welcome</h2><div class="muted">Select an order from the list, or click “New Order”.</div>');
+  });
+
+  document.getElementById('btnSubmit').addEventListener('click', async () => {
+    document.getElementById(errId).textContent = '';
+    document.getElementById(okId).textContent = '';
+
+    const payload = {
+      orderNo: document.getElementById('f_orderNo').value.trim(),
+      currency: document.getElementById('f_currency').value.trim(),
+      customerName: document.getElementById('f_customerName').value.trim(),
+      contact: document.getElementById('f_contact').value.trim(),
+      paymentTerms: document.getElementById('f_paymentTerms').value.trim(),
+      totalAmount: Number(document.getElementById('f_totalAmount').value || 0),
+      productReq: document.getElementById('f_productReq').value,
+      packagingReq: document.getElementById('f_packagingReq').value,
+      items: []
+    };
+
+    itemTbody.querySelectorAll('tr').forEach(tr => {
+      payload.items.push({
+        productName: tr.querySelector('.i_productName').value.trim(),
+        spec: tr.querySelector('.i_spec').value.trim(),
+        quantity: Number(tr.querySelector('.i_quantity').value || 0),
+        unitPrice: Number(tr.querySelector('.i_unitPrice').value || 0),
+        notes: tr.querySelector('.i_notes').value.trim()
+      });
+    });
+
+    try {
+      const saved = isEdit
+        ? await api('/' + order.id, { method:'PUT', headers: headers(), body: JSON.stringify(payload) })
+        : await api('', { method:'POST', headers: headers(), body: JSON.stringify(payload) });
+
+      document.getElementById(okId).textContent = 'Saved';
+      currentOrder = saved;
+      await loadList();
+      renderDetail(saved);
+    } catch (e) {
+      document.getElementById(errId).textContent = e.message;
+    }
+  });
+}
+
+function renderDetail(o) {
+  const sensitiveHidden = (o.customerName == null && o.totalAmount == null);
+  const wrStats = (Array.isArray(o.warehouseReceiptStats) && o.warehouseReceiptStats.length)
+    ? o.warehouseReceiptStats
+    : (o.items || []).map(it => ({
+        orderItemId: it.id,
+        productName: it.productName,
+        spec: it.spec,
+        demandQty: (it.quantity||0),
+        receivedQty: 0,
+        remainingQty: (it.quantity||0)
+      }));
+  const wrLogs = Array.isArray(o.warehouseReceiptLogs) ? o.warehouseReceiptLogs : [];
+
+  setRight(`
+    <h2>Order Details #${o.id}</h2>
+    <div class="muted">Status：<b>${escapeHtml(o.status)}</b>　Created at: ${escapeHtml(o.createdAt)}</div>
+    ${sensitiveHidden ? `<div class="muted mt">Your role cannot view customer/amount/unit price. Sensitive info is hidden.</div>` : ''}
+
+    <div class="divider"></div>
+
+    <div class="row3">
+      <div><div class="muted">Order No.</div><div>${escapeHtml(fmt(o.orderNo))}</div></div>
+      <div><div class="muted">Customer Name</div><div>${o.customerName ? escapeHtml(o.customerName) : '***'}</div></div>
+      <div><div class="muted">Total Amount</div><div>${o.totalAmount != null ? escapeHtml(o.totalAmount) : '***'}</div></div>
+    </div>
+
+    <div class="row mt">
+      <div><div class="muted">Contact Info</div><div>${o.contact ? escapeHtml(o.contact) : '***'}</div></div>
+      <div><div class="muted">Payment Terms</div><div>${o.paymentTerms ? escapeHtml(o.paymentTerms) : '***'}</div></div>
+    </div>
+
+    <div class="row mt">
+      <div><div class="muted">Product Requirements</div><div>${escapeHtml(fmt(o.productReq))}</div></div>
+      <div><div class="muted">Packaging Requirements</div><div>${escapeHtml(fmt(o.packagingReq))}</div></div>
+    </div>
+
+    <div class="section-title">
+      <h3>Items</h3>
+      <div class="actions">
+        <button class="btn mini" id="btnEditOrder">Edit Order</button>
+      </div>
+    </div>
+    <table>
+      <thead><tr><th>Product Name</th><th>Spec</th><th>Quantity</th><th>Unit Price</th><th>Notes</th></tr></thead>
+      <tbody>
+        ${(o.items||[]).map(it => `
+          <tr>
+            <td>${escapeHtml(it.productName)}</td>
+            <td>${escapeHtml(it.spec)}</td>
+            <td>${escapeHtml(fmt(it.quantity))}</td>
+            <td>${it.unitPrice != null ? escapeHtml(fmt(it.unitPrice)) : '***'}</td>
+            <td>${escapeHtml(fmt(it.notes))}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+
+    <div class="divider"></div>
+
+    <div class="section-title"><h3>Production Plan (PMC)</h3></div>
+    <div class="row3">
+      <div>
+        <div class="muted">Planned Start</div>
+        <input id="p_start" type="date" value="${toDateInputValue(o.plan?.plannedStartDate)}" />
+      </div>
+      <div>
+        <div class="muted">Planned Finish</div>
+        <input id="p_end" type="date" value="${toDateInputValue(o.plan?.plannedEndDate)}" />
+      </div>
+      <div>
+        <div class="muted">Planned Ship</div>
+        <input id="p_ship" type="date" value="${toDateInputValue(o.plan?.plannedShipDate)}" />
+      </div>
+    </div>
+    <div class="mt">
+      <div class="muted">Notes</div>
+      <textarea id="p_note">${escapeHtml(o.plan?.note||'')}</textarea>
+    </div>
+    <div class="actions mt">
+      <button class="btn mini" id="btnSavePlan">Save Production Plan</button>
+      <span class="muted mini" id="planMsg"></span>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="section-title">
+      <h3>Material Review (PMC)</h3>
+      <div class="actions">
+        <button class="btn mini" id="btnAddMat">Add Material</button>
+        <button class="btn mini" id="btnSaveMat">Save Material Review</button>
+      </div>
+    </div>
+    <table>
+      <thead><tr><th>Material</th><th>Procurement Type</th><th>Notes</th><th></th></tr></thead>
+      <tbody id="matTbody"></tbody>
+    </table>
+    <div class="muted mini" id="matMsg"></div>
+
+    <div class="divider"></div>
+
+    <div class="section-title">
+      <h3>Process Progress (Production)</h3>
+      <div class="actions">
+        <button class="btn mini" id="btnAddProc">Add Process</button>
+        <button class="btn mini" id="btnSaveProc">Save Process/Progress</button>
+      </div>
+    </div>
+    <table>
+      <thead><tr><th>Process</th><th>Target Qty</th><th>Completed Qty</th><th>Notes</th><th></th></tr></thead>
+      <tbody id="procTbody"></tbody>
+    </table>
+    <div class="muted mini" id="procMsg"></div>
+
+    <div class="divider"></div>
+
+    <div class="section-title"><h3>Warehouse Receipt (Warehouse)</h3></div>
+    <div class="muted mini">You can record “This Receipt Qty” before a process is fully completed. The system summarizes by product: Required / Received Total / Remaining.</div>
+
+    <table class="mt">
+      <thead>
+        <tr><th>Product Name</th><th>Spec</th><th>Required</th><th>Received Total</th><th>Remaining</th><th>This Receipt Qty</th></tr>
+      </thead>
+      <tbody>
+        ${wrStats.map(s => `
+          <tr>
+            <td>${escapeHtml(fmt(s.productName))}</td>
+            <td>${escapeHtml(fmt(s.spec))}</td>
+            <td>${escapeHtml(fmt(s.demandQty))}</td>
+            <td>${escapeHtml(fmt(s.receivedQty))}</td>
+            <td>${escapeHtml(fmt(s.remainingQty))}</td>
+            <td><input class="wrlog_qty" data-item-id="${s.orderItemId}" type="number" min="0" value="0" style="width:110px" /></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+
+    <div class="row mt">
+      <div>
+        <div class="muted">Received By (optional)</div>
+        <input id="wrlog_by" placeholder="e.g., John" />
+      </div>
+      <div>
+        <div class="muted">Note (optional)</div>
+        <input id="wrlog_note" placeholder="e.g., Received today" />
+      </div>
+    </div>
+    <div class="actions mt">
+      <button class="btn mini" id="btnAddReceiptLog">Submit Receipt</button>
+      <span class="muted mini" id="wrlogMsg"></span>
+    </div>
+
+    <div class="mt">
+      <div class="muted">Receipt Logs</div>
+      <div id="wrlogList" class="mt">
+        ${wrLogs.length ? wrLogs.map(l => `
+          <div class="card">
+            <div><b>${escapeHtml(fmt(l.receivedAt))}</b>　<span class="muted mini">Received by: ${escapeHtml(fmt(l.receivedBy))}</span></div>
+            ${l.note ? `<div class="muted mini mt">Note: ${escapeHtml(l.note)}</div>` : ''}
+            <div class="muted mini mt">${(l.items||[]).map(i => `${escapeHtml(fmt(i.productName))} × ${escapeHtml(fmt(i.qty))}`).join('，') || '—'}</div>
+          </div>
+        `).join('') : `<div class="muted mini">No receipt logs</div>`}
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="section-title"><h3>Final Receipt Confirmation (all processes must be completed)</h3></div>
+    <div class="row">
+      <div>
+        <div class="muted">Received By (optional)</div>
+        <input id="wr_by" placeholder="e.g., John" />
+      </div>
+      <div>
+        <div class="muted">Note (optional)</div>
+        <input id="wr_note" />
+      </div>
+    </div>
+    <div class="actions mt">
+      <button class="btn mini" id="btnReceipt">Confirm Final Receipt</button>
+      <span class="muted mini" id="wrMsg"></span>
+    </div>
+    ${o.warehouseReceipt ? `<div class="muted mt">Receipt completed: ${escapeHtml(o.warehouseReceipt.receivedAt)}　Received by: ${escapeHtml(fmt(o.warehouseReceipt.receivedBy))}</div>` : ''}
+
+    <div class="divider"></div>
+
+    <div class="section-title"><h3>Shipment (Sales/Warehouse)</h3></div>
+    <div class="row">
+      <div>
+        <div class="muted">Planned ship date (Sales)</div>
+        <input id="sp_date" type="date" value="${toDateInputValue(o.shipment?.plannedShipDate)}" />
+      </div>
+      <div>
+        <div class="muted">Notes</div>
+        <input id="sp_note" value="${escapeHtml(o.shipment?.note||'')}" />
+      </div>
+    </div>
+    <div class="actions mt">
+      <button class="btn mini" id="btnSaveShipPlan">Save Shipment Plan</button>
+    </div>
+
+    <div class="row mt">
+      <div>
+        <div class="muted">Shipped By (optional)</div>
+        <input id="ship_by" placeholder="e.g., Alice" />
+      </div>
+      <div>
+        <div class="muted">Confirmation Note (optional)</div>
+        <input id="ship_note" />
+      </div>
+    </div>
+    <div class="actions mt">
+      <button class="btn mini" id="btnShip">Confirm Shipped (Warehouse)</button>
+      <span class="muted mini" id="shipMsg"></span>
+    </div>
+
+    ${o.shipment?.shippedAt ? `<div class="muted mt">Shipped: ${escapeHtml(o.shipment.shippedAt)}　Confirmed by: ${escapeHtml(fmt(o.shipment.confirmedBy))}</div>` : ''}
+
+    <div class="divider"></div>
+
+    <div class="section-title">
+      <h3>Order Photos</h3>
+
+    </div>
+    <div class="row mt">
+      <div>
+        <input type="file" id="photoFiles" accept="image/*" multiple />
+        <div class="muted mini mt">Supports jpg/png/webp, max 10MB each</div>
+      </div>
+      <div class="actions" style="align-items:flex-end;">
+        <button class="btn mini" id="btnUploadPhotos">Upload</button>
+        <span class="muted mini" id="photoMsg"></span>
+      </div>
+    </div>
+    <div class="photo-grid mt" id="photoGrid"></div>
+
+    <div class="error mt" id="detailErr"></div>
+  `);
+
+  // Bind edit
+  document.getElementById('btnEditOrder').addEventListener('click', () => renderOrderForm('edit', o));
+
+  // Plan save
+  document.getElementById('btnSavePlan').addEventListener('click', async () => {
+    const msg = document.getElementById('planMsg'); msg.textContent = '';
+    try {
+      await api('/' + o.id + '/plan', {
+        method:'PUT', headers: headers(),
+        body: JSON.stringify({
+          plannedStartDate: document.getElementById('p_start').value || null,
+          plannedEndDate: document.getElementById('p_end').value || null,
+          plannedShipDate: document.getElementById('p_ship').value || null,
+          note: document.getElementById('p_note').value
+        })
+      });
+      msg.textContent = 'Saved';
+      await openDetail(o.id);
+      await loadList();
+    } catch(e) {
+      msg.textContent = 'Failed: ' + e.message;
+    }
+  });
+
+  // Materials table
+  const matTbody = document.getElementById('matTbody');
+  function addMatRow(m) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input class="m_name" value="${escapeHtml(m.materialName||'')}" /></td>
+      <td>
+        <select class="m_type">
+          <option value="EXTERNAL_PURCHASE">External Purchase</option>
+          <option value="IN_STOCK">In Stock</option>
+        </select>
+      </td>
+      <td><input class="m_note" value="${escapeHtml(m.note||'')}" /></td>
+      <td><button class="btn mini danger">Delete</button></td>
+    `;
+    tr.querySelector('.m_type').value = m.procurementType || 'EXTERNAL_PURCHASE';
+    tr.querySelector('button').addEventListener('click', () => tr.remove());
+    matTbody.appendChild(tr);
+  }
+  (o.materials||[]).forEach(addMatRow);
+  document.getElementById('btnAddMat').addEventListener('click', () => addMatRow({materialName:'', procurementType:'EXTERNAL_PURCHASE', note:''}));
+
+  document.getElementById('btnSaveMat').addEventListener('click', async () => {
+    const msg = document.getElementById('matMsg'); msg.textContent = '';
+    const mats = [];
+    matTbody.querySelectorAll('tr').forEach(tr => {
+      mats.push({
+        materialName: tr.querySelector('.m_name').value.trim(),
+        procurementType: tr.querySelector('.m_type').value,
+        note: tr.querySelector('.m_note').value.trim()
+      });
+    });
+    try {
+      await api('/' + o.id + '/materials', { method:'PUT', headers: headers(), body: JSON.stringify({ materials: mats }) });
+      msg.textContent = 'Saved';
+      await openDetail(o.id);
+      await loadList();
+    } catch(e) {
+      msg.textContent = 'Failed: ' + e.message;
+    }
+  });
+
+  // Process table
+  const procTbody = document.getElementById('procTbody');
+  function addProcRow(p) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input class="p_name" value="${escapeHtml(p.processName||'')}" /></td>
+      <td><input class="p_target" type="number" min="0" value="${p.targetQuantity ?? ''}" /></td>
+      <td><input class="p_finished" type="number" min="0" value="${p.finishedQuantity ?? 0}" /></td>
+      <td><input class="p_note" value="${escapeHtml(p.note||'')}" /></td>
+      <td><button class="btn mini danger">Delete</button></td>
+    `;
+    tr.querySelector('button').addEventListener('click', () => tr.remove());
+    procTbody.appendChild(tr);
+  }
+  (o.processes||[]).forEach(addProcRow);
+  document.getElementById('btnAddProc').addEventListener('click', () => addProcRow({processName:'', targetQuantity: null, finishedQuantity:0, note:''}));
+
+  document.getElementById('btnSaveProc').addEventListener('click', async () => {
+    const msg = document.getElementById('procMsg'); msg.textContent = '';
+    const procs = [];
+    procTbody.querySelectorAll('tr').forEach(tr => {
+      procs.push({
+        processName: tr.querySelector('.p_name').value.trim(),
+        targetQuantity: tr.querySelector('.p_target').value ? Number(tr.querySelector('.p_target').value) : null,
+        finishedQuantity: Number(tr.querySelector('.p_finished').value || 0),
+        note: tr.querySelector('.p_note').value.trim()
+      });
+    });
+    try {
+      await api('/' + o.id + '/processes', { method:'PUT', headers: headers(), body: JSON.stringify({ processes: procs }) });
+      msg.textContent = 'Saved';
+      await openDetail(o.id);
+      await loadList();
+    } catch(e) {
+      msg.textContent = 'Failed: ' + e.message;
+    }
+  });
+
+  // Warehouse: multi receipt log (can be partial / multiple times)
+  const btnAddReceiptLog = document.getElementById('btnAddReceiptLog');
+  if (btnAddReceiptLog) {
+    btnAddReceiptLog.addEventListener('click', async () => {
+      const msg = document.getElementById('wrlogMsg'); msg.textContent = '';
+      try {
+        const items = [];
+        document.querySelectorAll('.wrlog_qty').forEach(inp => {
+          const qty = Number(inp.value || 0);
+          const oid = Number(inp.dataset.itemId || 0);
+          if (oid && qty > 0) items.push({ orderItemId: oid, qty: qty });
+        });
+        if (!items.length) {
+          msg.textContent = 'Please enter “This Receipt Qty” (> 0) first';
+          return;
+        }
+        await api('/' + o.id + '/warehouse-receipts', {
+          method:'POST', headers: headers(),
+          body: JSON.stringify({
+            receivedBy: document.getElementById('wrlog_by').value.trim() || null,
+            note: document.getElementById('wrlog_note').value.trim() || null,
+            items
+          })
+        });
+        msg.textContent = 'Submitted';
+        await openDetail(o.id);
+        await loadList();
+      } catch(e) {
+        msg.textContent = 'Failed: ' + e.message;
+      }
+    });
+  }
+
+  // Receipt
+  document.getElementById('btnReceipt').addEventListener('click', async () => {
+    const msg = document.getElementById('wrMsg'); msg.textContent = '';
+    try {
+      await api('/' + o.id + '/warehouse-receipt', {
+        method:'POST', headers: headers(),
+        body: JSON.stringify({
+          receivedBy: document.getElementById('wr_by').value.trim() || null,
+          note: document.getElementById('wr_note').value.trim() || null
+        })
+      });
+      msg.textContent = 'Receipt confirmed';
+      await openDetail(o.id);
+      await loadList();
+    } catch(e) {
+      msg.textContent = 'Failed: ' + e.message;
+    }
+  });
+
+  // Shipment plan
+  document.getElementById('btnSaveShipPlan').addEventListener('click', async () => {
+    const msg = document.getElementById('shipMsg'); msg.textContent = '';
+    try {
+      await api('/' + o.id + '/shipment-plan', {
+        method:'PUT', headers: headers(),
+        body: JSON.stringify({
+          plannedShipDate: document.getElementById('sp_date').value || null,
+          note: document.getElementById('sp_note').value.trim() || null
+        })
+      });
+      msg.textContent = 'Shipment plan saved';
+      await openDetail(o.id);
+      await loadList();
+    } catch(e) {
+      msg.textContent = 'Failed: ' + e.message;
+    }
+  });
+
+  // Ship confirm
+  document.getElementById('btnShip').addEventListener('click', async () => {
+    const msg = document.getElementById('shipMsg'); msg.textContent = '';
+    try {
+      await api('/' + o.id + '/ship', {
+        method:'POST', headers: headers(),
+        body: JSON.stringify({
+          confirmedBy: document.getElementById('ship_by').value.trim() || null,
+          note: document.getElementById('ship_note').value.trim() || null
+        })
+      });
+      msg.textContent = 'Shipment confirmed (archived)';
+      await openDetail(o.id);
+      await loadList();
+    } catch(e) {
+      msg.textContent = 'Failed: ' + e.message;
+    }
+  });
+
+  // Photos
+  wirePhotos(o.id);
+  loadPhotos(o.id);
+}
+
+btnRefresh.addEventListener('click', loadList);
+
+// list filters
+const orderSearch = document.getElementById('orderSearch');
+const statusFilter = document.getElementById('statusFilter');
+const btnExportCsv = document.getElementById('btnExportCsv');
+
+if (orderSearch) orderSearch.addEventListener('input', () => renderOrderList(getFilteredOrders()));
+if (statusFilter) statusFilter.addEventListener('change', () => renderOrderList(getFilteredOrders()));
+if (btnExportCsv) btnExportCsv.addEventListener('click', exportOrdersCsv);
+
+btnNew.addEventListener('click', () => {
+  currentOrder = null;
+  renderOrderForm('create', blankOrder());
+});
+roleSelect.addEventListener('change', async () => {
+  await loadList();
+  if (currentOrder && currentOrder.id) await openDetail(currentOrder.id);
+});
+
+// init
+setRight('<h2>Welcome</h2><div class="muted">Select an order from the list, or click “New Order”.</div>');
+
+btnLogin.onclick = doLogin;
+btnLogout.onclick = doLogout;
+btnUserMgmt.onclick = openUserMgmt;
+btnAuditLogs.onclick = openAuditLogs;
+loginPass.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+
+(async () => {
+  await refreshMe();
+  if (auth.username) {
+    await loadList();
+  } else {
+    showLogin(true);
+  }
+})();
+</script>
+</body>
+</html>
